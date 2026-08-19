@@ -28,14 +28,20 @@ type CallResponse struct {
 	Carnet     string `json:"carnet"`
 }
 
+// PeerInfo guarda la VM y la URL base conocidas para un peer
+type PeerInfo struct {
+	VM  string
+	URL string
+}
+
 // Configuración cargada desde variables de entorno
 var (
-	apiName string            // Ej: "API1"
-	apiNum  string            // Ej: "1"
-	vmName  string            // Ej: "VM1"
-	carnet  string            // Carnet del estudiante
-	port    string            // Puerto donde escucha
-	peers   map[string]string // Ej: {"API2": "http://192.168.122.220:8082"}
+	apiName string              // Ej: "API1"
+	apiNum  string              // Ej: "1"
+	vmName  string              // Ej: "VM1"
+	carnet  string              // Carnet del estudiante
+	port    string              // Puerto donde escucha
+	peers   map[string]PeerInfo // Ej: {"API2": {VM:"VM1", URL:"http://192.168.122.220:8082"}}
 )
 
 // healthHandler responde el estado de esta API
@@ -65,7 +71,7 @@ func callHandler(w http.ResponseWriter, r *http.Request) {
 	targetNum := strings.TrimPrefix(parts[2], "call-api")
 	targetName := "API" + targetNum
 
-	peerURL, ok := peers[targetName]
+	peer, ok := peers[targetName]
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(CallResponse{
@@ -78,12 +84,12 @@ func callHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(peerURL + "/health")
+	resp, err := client.Get(peer.URL + "/health")
 
 	if err != nil {
 		json.NewEncoder(w).Encode(CallResponse{
 			ApiName:    targetName,
-			Message:    fmt.Sprintf("ERROR: The %s is not working", targetName),
+			Message:    fmt.Sprintf("ERROR: The %s located on the %s is not working", targetName, peer.VM),
 			Connection: false,
 			Carnet:     carnet,
 		})
@@ -96,7 +102,7 @@ func callHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &h); err != nil || h.Status != "UP" {
 		json.NewEncoder(w).Encode(CallResponse{
 			ApiName:    targetName,
-			Message:    fmt.Sprintf("ERROR: The %s is not working", targetName),
+			Message:    fmt.Sprintf("ERROR: The %s located on the %s is not working", targetName, peer.VM),
 			Connection: false,
 			Carnet:     carnet,
 		})
@@ -118,16 +124,25 @@ func envOrDefault(key, def string) string {
 	return def
 }
 
-// parsePeers convierte "API2=http://ip:puerto,API3=http://ip:puerto" en un map
-func parsePeers(s string) map[string]string {
-	m := map[string]string{}
+// parsePeers convierte "API2=VM1|http://ip:puerto,API3=VM2|http://ip:puerto" en un map
+func parsePeers(s string) map[string]PeerInfo {
+	m := map[string]PeerInfo{}
 	if s == "" {
 		return m
 	}
 	for _, pair := range strings.Split(s, ",") {
 		kv := strings.SplitN(pair, "=", 2)
-		if len(kv) == 2 {
-			m[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		if len(kv) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(kv[0])
+		vmAndURL := strings.SplitN(kv[1], "|", 2)
+		if len(vmAndURL) != 2 {
+			continue
+		}
+		m[name] = PeerInfo{
+			VM:  strings.TrimSpace(vmAndURL[0]),
+			URL: strings.TrimSpace(vmAndURL[1]),
 		}
 	}
 	return m
