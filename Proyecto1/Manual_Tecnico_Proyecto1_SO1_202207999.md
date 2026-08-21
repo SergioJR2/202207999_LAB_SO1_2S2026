@@ -42,6 +42,71 @@ graph TD
 
 ---
 
+## Instancias de APIs desplegadas
+
+Las 3 APIs comparten el mismo código fuente (`main.go`), pero se ejecutan como servicios completamente independientes, cada una en su propio contenedor, configurada mediante variables de entorno distintas. La siguiente tabla documenta el estado real de cada instancia en ejecución:
+
+| API | VM (host) | Contenedor | Imagen | Runtime | Puerto | URL base |
+|---|---|---|---|---|---|---|
+| API1 | VM1 (192.168.122.220) | `api1` | `api1-202207999:latest` | containerd (nerdctl) | 8081 | `http://192.168.122.220:8081` |
+| API2 | VM1 (192.168.122.220) | `api2` | `api2-202207999:latest` | containerd (nerdctl) | 8082 | `http://192.168.122.220:8082` |
+| API3 | VM2 (192.168.122.156) | `api3` | `api3-202207999:latest` | Podman | 8083 | `http://192.168.122.156:8083` |
+
+### Configuración de variables de entorno por instancia
+
+**API1 (contenedor `api1`, en VM1):**
+```bash
+APINAME=API1
+APINUM=1
+VM=VM1
+CARNET=202207999
+PORT=8081
+PEERS="API2=VM1|http://192.168.122.220:8082,API3=VM2|http://192.168.122.156:8083"
+```
+
+**API2 (contenedor `api2`, en VM1):**
+```bash
+APINAME=API2
+APINUM=2
+VM=VM1
+CARNET=202207999
+PORT=8082
+PEERS="API1=VM1|http://192.168.122.220:8081,API3=VM2|http://192.168.122.156:8083"
+```
+
+**API3 (contenedor `api3`, en VM2):**
+```bash
+APINAME=API3
+APINUM=3
+VM=VM2
+CARNET=202207999
+PORT=8083
+PEERS="API1=VM1|http://192.168.122.220:8081,API2=VM1|http://192.168.122.220:8082"
+```
+
+### Rutas expuestas por cada instancia
+
+| API | Endpoint principal | Llamada 1 | Llamada 2 |
+|---|---|---|---|
+| API1 | `GET http://192.168.122.220:8081/health` | `GET .../api1/202207999/call-api2` | `GET .../api1/202207999/call-api3` |
+| API2 | `GET http://192.168.122.220:8082/health` | `GET .../api2/202207999/call-api1` | `GET .../api2/202207999/call-api3` |
+| API3 | `GET http://192.168.122.156:8083/health` | `GET .../api3/202207999/call-api1` | `GET .../api3/202207999/call-api2` |
+
+### Verificación del estado de las instancias
+
+```bash
+# VM1 — containerd
+sudo nerdctl ps
+sudo ctr -n default containers ls
+
+# VM2 — Podman
+podman ps
+```
+
+Resultado esperado: los 3 contenedores (`api1`, `api2` en VM1; `api3` en VM2) en estado `Up`, cada uno escuchando en su puerto correspondiente.
+
+---
+
 ## Preparación del entorno
 
 ### VM1 — Instalación de Containerd + nerdctl
@@ -110,7 +175,7 @@ Resultado: `Docker version 29.7.2` — contenedor `hello-world` ejecutado correc
 
 ### Diseño
 
-Se implementó un único binario en Go, parametrizable por variables de entorno, que se comporta como API1, API2 o API3 según su configuración. Esto permite reutilizar el mismo código fuente para las 3 APIs, ejecutándolas como servicios independientes en contenedores distintos.
+Se implementó un único binario en Go, parametrizable por variables de entorno, que se comporta como API1, API2 o API3 según su configuración. Esto permite reutilizar el mismo código fuente para las 3 APIs, ejecutándolas como servicios independientes en contenedores distintos .
 
 **Variables de entorno usadas:**
 
@@ -440,28 +505,6 @@ Y en `crontab -e` (de usuario, sin sudo):
 
 **Resultado:** tras aplicar esto, un reinicio completo de las 3 VMs recuperó `api1`, `api2` y `api3` automáticamente, sin intervención manual, confirmado en una prueba posterior.
 
-### Formato de mensaje de error no coincidía con el enunciado
-
-**Síntoma:** el mensaje de error de `call-apiN` no incluía el nombre de la VM del peer caído.
-
-- Se generaba: `"ERROR: The API2 is not working"`
-- El enunciado pide: `"ERROR: The API2 located on the VM1 is not working"`
-
-**Causa:** el código original solo guardaba la URL de cada peer, no su nombre de VM, así que en caso de fallo de conexión no había forma de reportar esa VM.
-
-**Solución:** se extendió el formato de la variable `PEERS` para incluir la VM de cada peer (`API#=VM#|URL` en vez de solo `API#=URL`), y se actualizó el código para usar ese dato tanto en el mensaje de éxito como en el de error.
-
 ---
 
-## Reflexión y habilidades blandas
-
-El desarrollo de este proyecto presentó varios problemas no anticipados en el enunciado original, que requirieron investigación y resolución autónoma antes de poder avanzar:
-
-- Incompatibilidad de formato de manifest entre `nerdctl push` y Zot, resuelta usando `skopeo` como herramienta intermedia tras identificar la causa exacta del error `415 Unsupported Media Type`.
-- Descubrimiento de que ni containerd/nerdctl ni Podman rootless reinician contenedores automáticamente tras un reboot completo del sistema operativo, a diferencia de Docker. Esto exigió diseñar una solución de dos capas (`--restart unless-stopped` más `cron @reboot`) y entender la diferencia entre persistencia de proceso y persistencia de sistema.
-- Ajuste del diseño de la aplicación (formato de la variable `PEERS`) para que los mensajes de error cumplieran exactamente con el formato JSON especificado en el enunciado, incluso en el caso donde la información necesaria (la VM del peer) no puede obtenerse de una conexión fallida.
-
-Cada uno de estos incidentes se diagnosticó revisando logs y salidas de los propios runtimes (`docker logs`, `podman logs`, `nerdctl ps -a`), en vez de asumir causas, lo cual permitió aplicar soluciones dirigidas al problema real en cada caso.
-
----
-Proyecto 1 — Sistemas Operativos 1, USAC.*
+*Proyecto 1 — Sistemas Operativos 1, USAC.*
