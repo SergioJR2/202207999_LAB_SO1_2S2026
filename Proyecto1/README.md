@@ -26,6 +26,7 @@ Entorno virtualizado de microservicios que integra máquinas virtuales (KVM) y 3
 ```mermaid
 graph TD
     Host["SISTEMA LINUX<br>Virtualización KVM"]
+
     VM1["<b>VM1</b><br>Runtime: containerd<br>API 1 :8081 (Go)<br>API 2 :8082 (Go)"]
     VM2["<b>VM2</b><br>Runtime: podman<br>API 3 :8083 (Go)"]
     VM3["<b>VM3</b><br>Runtime: Docker<br>Zot :5000 (registry)"]
@@ -34,14 +35,9 @@ graph TD
     Host --> VM2
     Host --> VM3
 
-    VM1 <-->|REST/HTTP JSON| VM2
-    VM2 <-->|REST/HTTP JSON| VM3
-    VM1 <-->|REST/HTTP JSON| VM3
-
-    style Host fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style VM1 fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
-    style VM2 fill:#f8cecc,stroke:#b85450,stroke-width:2px
-    style VM3 fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px
+    VM1 <-->|Comunicación cruzada<br>REST/HTTP JSON| VM2
+    VM2 <-->|Comunicación cruzada<br>REST/HTTP JSON| VM3
+    VM1 <-->|Comunicación cruzada<br>REST/HTTP JSON| VM3
 ```
 
 ![Virtual Machine Manager con las 3 VMs corriendo](capturas/01-virt-manager-3vms.png)

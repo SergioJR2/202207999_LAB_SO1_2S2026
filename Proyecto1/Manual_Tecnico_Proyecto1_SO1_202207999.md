@@ -33,11 +33,6 @@ graph TD
     VM1 <-->|Comunicación cruzada<br>REST/HTTP JSON| VM2
     VM2 <-->|Comunicación cruzada<br>REST/HTTP JSON| VM3
     VM1 <-->|Comunicación cruzada<br>REST/HTTP JSON| VM3
-
-    style Host fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style VM1 fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
-    style VM2 fill:#f8cecc,stroke:#b85450,stroke-width:2px
-    style VM3 fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px
 ```
 
 ---
